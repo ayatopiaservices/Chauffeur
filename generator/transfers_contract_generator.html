@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generátor přepravní smlouvy</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .container {
+            max-width: 900px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .contract-box {
+            background-color: #ffffff;
+            padding: 2.5rem; /* Zvětšené odsazení */
+            border-radius: 8px;
+            white-space: pre-wrap;
+            font-family: sans-serif;
+            line-height: 1.5;
+        }
+        .form-input {
+            width: 100%;
+            padding: 0.75rem;
+            border-radius: 8px;
+            border: 1px solid #d1d5db;
+            transition: all 0.2s;
+        }
+        .form-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
+        }
+        .contract-content {
+            padding-left: 2rem;
+        }
+        /* Pevné styly pro generování PDF */
+        #contract-output {
+            width: 210mm; /* Šířka A4 */
+            min-height: 297mm; /* Výška A4 */
+            padding: 20mm; /* Odsazení od okrajů */
+            box-sizing: border-box;
+            font-size: 11pt; /* Změna velikosti fontu */
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-3xl font-bold text-center mb-6 text-gray-800">Generátor přepravní smlouvy</h1>
+        <form id="contract-form" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div>
+                <label for="datetime" class="block text-sm font-medium text-gray-700 mb-1">Datum a čas (dd.mm.yyyy hh:mm):</label>
+                <input type="datetime-local" id="datetime" class="form-input" required>
+            </div>
+            <div>
+                <label for="client" class="block text-sm font-medium text-gray-700 mb-1">Objednatel:</label>
+                <input type="text" id="client" class="form-input" required>
+            </div>
+            <div>
+                <label for="pickup" class="block text-sm font-medium text-gray-700 mb-1">Místo nástupu:</label>
+                <input type="text" id="pickup" class="form-input" required>
+            </div>
+            <div>
+                <label for="destination" class="block text-sm font-medium text-gray-700 mb-1">Místo výstupu:</label>
+                <input type="text" id="destination" class="form-input" required>
+            </div>
+            <div>
+                <label for="price" class="block text-sm font-medium text-gray-700 mb-1">Cena (Kč):</label>
+                <input type="number" id="price" class="form-input" required>
+            </div>
+            <div class="md:col-span-2 flex justify-center mt-4">
+                <button type="submit" class="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition-colors">Generovat smlouvu</button>
+            </div>
+        </form>
+
+        <div id="contract-container" class="hidden">
+            <div id="contract-output" class="contract-box mb-6 text-gray-800"></div>
+            <div class="flex justify-center">
+                <button id="save-pdf-button" class="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition-colors">Uložit jako PDF</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const form = document.getElementById('contract-form');
+            const contractContainer = document.getElementById('contract-container');
+            const contractOutput = document.getElementById('contract-output');
+            const savePdfButton = document.getElementById('save-pdf-button');
+            const datetimeInput = document.getElementById('datetime');
+            let contractNumber = '';
+            
+            // Nastavení aktuálního data a času
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = (now.getMonth() + 1).toString().padStart(2, '0');
+            const day = now.getDate().toString().padStart(2, '0');
+            const hour = now.getHours().toString().padStart(2, '0');
+            const minute = now.getMinutes().toString().padStart(2, '0');
+            const formattedDatetime = `${year}-${month}-${day}T${hour}:${minute}`;
+            datetimeInput.value = formattedDatetime;
+
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                generateContract();
+            });
+
+            savePdfButton.addEventListener('click', () => {
+                saveContractAsPdf();
+            });
+
+            function generateContract() {
+                const datetime = datetimeInput.value;
+                const pickup = document.getElementById('pickup').value;
+                const destination = document.getElementById('destination').value;
+                const client = document.getElementById('client').value;
+                const price = document.getElementById('price').value;
+
+                if (!datetime || !pickup || !destination || !client || !price) {
+                    const messageBox = document.createElement('div');
+                    messageBox.className = 'fixed inset-0 flex items-center justify-center z-50';
+                    messageBox.innerHTML = `
+                        <div class="bg-white p-6 rounded-lg shadow-xl text-center">
+                            <p class="text-lg font-semibold text-gray-800">Prosím, vyplňte všechna pole.</p>
+                            <button onclick="this.parentNode.parentNode.remove()" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg">OK</button>
+                        </div>
+                    `;
+                    document.body.appendChild(messageBox);
+                    return;
+                }
+
+                const dateObj = new Date(datetime);
+                const year = String(dateObj.getFullYear()).slice(-2);
+                const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+                const day = String(dateObj.getDate()).padStart(2, '0');
+                const hour = String(dateObj.getHours()).padStart(2, '0');
+                const minute = String(dateObj.getMinutes()).padStart(2, '0');
+
+                const issuedDate = `${day}. ${month}. ${dateObj.getFullYear()}`;
+                const issuedContractNumber = `${year}${month}${day}${hour}${minute}`;
+                const pickupWithTime = `${pickup} (${day}.${month}. ${dateObj.getFullYear()} ${hour}:${minute})`;
+                const formattedPrice = `${price} Kč`;
+
+                contractNumber = issuedContractNumber;
+
+                const contractText = `
+<div style="text-align: right; margin-bottom: 20px;">Vystaveno ${issuedDate}</div>
+<div style="text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 30px;">Potvrzení o přepravě č. ${issuedContractNumber}</div>
+<div style="font-weight: bold;">Dopravce:</div>Jakub Horák
+Radčina 519/8, Praha, Liboc, 161 00
+IČO: 04008324
+<div style="font-weight: bold; margin-top: 15px;">Řidič:</div>Jakub Horák
+Mercedes-Benz E250
+SPZ: 7C90589
+<div style="font-weight: bold; margin-top: 15px;">Objednatel:</div>${client}
+<div style="font-weight: bold; margin-top: 15px;">Začátek přepravy:</div>${pickupWithTime}
+<div style="font-weight: bold; margin-top: 15px;">Konec přepravy</div>${destination}
+<div style="font-weight: bold; margin-top: 15px;">Cena celkem:</div>${formattedPrice}
+<div style="margin-top: 20px;">Vydáno jménem dopravce Jakub Horák zprostředkovatelem:</div>Vasyl Čerevko IČO: 06018394, Moskevská 1842, Kladno
+                `.trim();
+
+                contractOutput.innerHTML = contractText;
+                contractContainer.classList.remove('hidden');
+            }
+
+            async function saveContractAsPdf() {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF('p', 'mm', 'a4');
+                const element = document.getElementById('contract-output');
+                
+                // Převod HTML obsahu na canvas
+                const canvas = await html2canvas(element, {
+                    scale: 2,
+                    logging: true,
+                    useCORS: true,
+                    backgroundColor: '#ffffff',
+                });
+
+                const imgData = canvas.toDataURL('image/png');
+                const imgProps = doc.getImageProperties(imgData);
+                const pdfWidth = doc.internal.pageSize.getWidth();
+                const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+                doc.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+                doc.save(`${contractNumber}.pdf`);
+            }
+        });
+    </script>
+</body>
+</html>
